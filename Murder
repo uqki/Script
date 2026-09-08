@@ -1,0 +1,432 @@
+--// duelscript kimi Edition
+--// Powered by Obsidian UI Library
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+
+--// Load Obsidian UI
+local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
+local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
+local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
+local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
+
+local Options = Library.Options
+local Toggles = Library.Toggles
+
+Library.ShowToggleFrameInKeybinds = true
+
+local Window = Library:CreateWindow({
+	Title = "duelscript kimi Edition",
+	Footer = "FPS Cheat Suite",
+	Icon = 95816097006870,
+	NotifySide = "Right",
+	ShowCustomCursor = true,
+	MobileButtonsSide = "Left",
+})
+
+local Tabs = {
+	Combat = Window:AddTab("Combat", "crosshair"),
+	Visual = Window:AddTab("Visual", "eye"),
+	Movement = Window:AddTab("Movement", "zap"),
+	Teleport = Window:AddTab("Teleport", "move"),
+	["UI Settings"] = Window:AddTab("UI Settings", "settings"),
+}
+
+--// ========== COMBAT TAB ==========
+local CombatLeft = Tabs.Combat:AddGroupbox({Side = "Left", Name = "Aim"})
+local CombatRight = Tabs.Combat:AddGroupbox({Side = "Right", Name = "Silent Aim"})
+
+CombatLeft:AddToggle("Aimbot", {
+	Text = "Aimbot",
+	Default = false,
+	Tooltip = "Locks camera to nearest enemy",
+})
+
+CombatLeft:AddSlider("AimbotFOV", {
+	Text = "Aimbot FOV",
+	Default = 400,
+	Min = 50,
+	Max = 1000,
+	Rounding = 0,
+	Suffix = " px",
+	Tooltip = "Detection radius from mouse position",
+})
+
+CombatRight:AddToggle("AutoAim", {
+	Text = "AutoAim (Silent)",
+	Default = false,
+	Tooltip = "Fires remotes at nearest enemy through walls",
+})
+
+--// ========== VISUAL TAB ==========
+local VisualLeft = Tabs.Visual:AddGroupbox({Side = "Left", Name = "ESP"})
+local VisualRight = Tabs.Visual:AddGroupbox({Side = "Right", Name = "Wallhack"})
+
+VisualLeft:AddToggle("ESP", {
+	Text = "Box / Name / Distance ESP",
+	Default = false,
+	Tooltip = "Shows info above enemy players",
+})
+
+VisualRight:AddToggle("Wallhack", {
+	Text = "Wallhack (Highlight)",
+	Default = false,
+	Tooltip = "See enemies through walls",
+})
+
+--// ========== MOVEMENT TAB ==========
+local MoveLeft = Tabs.Movement:AddGroupbox({Side = "Left", Name = "Speed"})
+local MoveRight = Tabs.Movement:AddGroupbox({Side = "Right", Name = "Misc"})
+
+MoveLeft:AddToggle("SpeedHack", {
+	Text = "SpeedHack",
+	Default = false,
+	Tooltip = "Increases walkspeed",
+})
+
+MoveLeft:AddSlider("SpeedValue", {
+	Text = "Speed Value",
+	Default = 80,
+	Min = 16,
+	Max = 200,
+	Rounding = 0,
+	Suffix = " studs/s",
+	Tooltip = "Walkspeed when SpeedHack is enabled",
+})
+
+MoveRight:AddToggle("Noclip", {
+	Text = "Noclip",
+	Default = false,
+	Tooltip = "Walk through walls",
+})
+
+--// ========== TELEPORT TAB ==========
+local TPGroup = Tabs.Teleport:AddGroupbox({Side = "Left", Name = "Target"})
+
+TPGroup:AddDropdown("TargetPlayer", {
+	SpecialType = "Player",
+	ExcludeLocalPlayer = true,
+	Text = "Select Target",
+	Tooltip = "Auto-updates player list",
+})
+
+TPGroup:AddButton({
+	Text = "Teleport Above",
+	Func = function()
+		local targetName = Options.TargetPlayer.Value
+		if not targetName or targetName == "" then return end
+
+		local target = Players:FindFirstChild(targetName)
+		if not target then return end
+		if not target.Character or not target.Character:FindFirstChild("HumanoidRootPart") then return end
+		if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
+
+		local myHRP = LocalPlayer.Character.HumanoidRootPart
+		local targetHRP = target.Character.HumanoidRootPart
+		local originalCF = myHRP.CFrame
+
+		myHRP.CFrame = targetHRP.CFrame * CFrame.new(0, 12, 0)
+		task.wait(0.15)
+		myHRP.CFrame = originalCF
+	end,
+	DoubleClick = false,
+	Tooltip = "Teleports above selected player for 0.15s then returns",
+})
+
+--// ========== LOGIC ==========
+
+--// Team Check Helper
+local function IsEnemy(plr)
+	if plr == LocalPlayer then return false end
+	if LocalPlayer.Team and plr.Team then
+		return plr.Team ~= LocalPlayer.Team
+	end
+	return true
+end
+
+--// ESP System
+local ESPObjects = {}
+
+local function CreateESP(player)
+	if player == LocalPlayer then return end
+
+	local function SetupCharacter(character)
+		local hrp = character:WaitForChild("HumanoidRootPart", 5)
+		if not hrp then return end
+
+		local box = Instance.new("BoxHandleAdornment")
+		box.Name = "ESP_Box"
+		box.Size = Vector3.new(4, 5.5, 2)
+		box.Color3 = Color3.fromRGB(255, 50, 100)
+		box.Transparency = 0.6
+		box.ZIndex = 10
+		box.AlwaysOnTop = true
+		box.Adornee = hrp
+		box.Parent = hrp
+
+		local billboard = Instance.new("BillboardGui")
+		billboard.Name = "ESP_Name"
+		billboard.Size = UDim2.new(0, 130, 0, 38)
+		billboard.StudsOffset = Vector3.new(0, 3.5, 0)
+		billboard.AlwaysOnTop = true
+		billboard.Adornee = hrp
+		billboard.Parent = hrp
+
+		local nameLabel = Instance.new("TextLabel")
+		nameLabel.Size = UDim2.new(1, 0, 0.5, 0)
+		nameLabel.BackgroundTransparency = 1
+		nameLabel.Text = player.Name
+		nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+		nameLabel.TextStrokeTransparency = 0.2
+		nameLabel.TextSize = 13
+		nameLabel.Font = Enum.Font.GothamBold
+		nameLabel.Parent = billboard
+
+		local distLabel = Instance.new("TextLabel")
+		distLabel.Size = UDim2.new(1, 0, 0.5, 0)
+		distLabel.Position = UDim2.new(0, 0, 0.5, 0)
+		distLabel.BackgroundTransparency = 1
+		distLabel.Text = "0m"
+		distLabel.TextColor3 = Color3.fromRGB(100, 255, 180)
+		distLabel.TextStrokeTransparency = 0.2
+		distLabel.TextSize = 11
+		distLabel.Font = Enum.Font.Gotham
+		distLabel.Parent = billboard
+
+		ESPObjects[player] = {box = box, billboard = billboard, distLabel = distLabel}
+	end
+
+	if player.Character then SetupCharacter(player.Character) end
+	player.CharacterAdded:Connect(SetupCharacter)
+end
+
+for _, plr in ipairs(Players:GetPlayers()) do CreateESP(plr) end
+Players.PlayerAdded:Connect(CreateESP)
+Players.PlayerRemoving:Connect(function(plr) ESPObjects[plr] = nil end)
+
+--// Wallhack System
+local Highlights = {}
+
+local function UpdateWallhack()
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= LocalPlayer and plr.Character then
+			if not Highlights[plr] then
+				local hl = Instance.new("Highlight")
+				hl.Name = "WH_Highlight"
+				hl.FillColor = Color3.fromRGB(255, 50, 100)
+				hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+				hl.FillTransparency = 0.6
+				hl.OutlineTransparency = 0.1
+				hl.Parent = plr.Character
+				Highlights[plr] = hl
+			end
+			Highlights[plr].Enabled = Toggles.Wallhack.Value
+		end
+	end
+end
+
+Players.PlayerAdded:Connect(function(plr)
+	plr.CharacterAdded:Connect(function() task.wait(1) UpdateWallhack() end)
+end)
+
+--// Aimbot Helper (Mouse-based, respects FOV slider, ignores teammates)
+local function GetClosestEnemyToMouse()
+	local closest, shortestDist = nil, math.huge
+	local mousePos = UserInputService:GetMouseLocation()
+	local fov = Options.AimbotFOV.Value
+
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if IsEnemy(plr) and plr.Character then
+			local targetPart = plr.Character:FindFirstChild("Head") or plr.Character:FindFirstChild("HumanoidRootPart")
+			if targetPart then
+				local pos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
+				if onScreen then
+					local dist = (Vector2.new(pos.X, pos.Y) - mousePos).Magnitude
+					if dist < shortestDist and dist < fov then
+						shortestDist = dist
+						closest = plr
+					end
+				end
+			end
+		end
+	end
+	return closest
+end
+
+--// Silent Aim Helper (World-based, no visibility check, ignores teammates)
+local function GetClosestEnemyForSilent()
+	local closest, shortestDist = nil, math.huge
+	local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if IsEnemy(plr) and plr.Character then
+			local targetPart = plr.Character:FindFirstChild("Head") or plr.Character:FindFirstChild("HumanoidRootPart")
+			if targetPart then
+				local pos = Camera:WorldToViewportPoint(targetPart.Position)
+				local dist = (Vector2.new(pos.X, pos.Y) - center).Magnitude
+				if dist < shortestDist and dist < 600 then
+					shortestDist = dist
+					closest = plr
+				end
+			end
+		end
+	end
+	return closest
+end
+
+--// SpeedHack
+local originalWalkSpeed = 16
+
+local function UpdateSpeed()
+	if LocalPlayer.Character then
+		local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+		if hum then
+			if Toggles.SpeedHack.Value then
+				hum.WalkSpeed = Options.SpeedValue.Value
+			else
+				hum.WalkSpeed = originalWalkSpeed
+			end
+		end
+	end
+end
+
+--// Noclip
+RunService.Stepped:Connect(function()
+	if Toggles.Noclip.Value and LocalPlayer.Character then
+		for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
+			if part:IsA("BasePart") then
+				part.CanCollide = false
+			end
+		end
+	end
+end)
+
+--// Render Loop
+RunService.RenderStepped:Connect(function()
+	-- ESP
+	for plr, objects in pairs(ESPObjects) do
+		if plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+			local enabled = Toggles.ESP.Value
+			if objects.box then objects.box.Visible = enabled end
+			if objects.billboard then objects.billboard.Enabled = enabled end
+			if enabled and objects.distLabel and LocalPlayer.Character then
+				local myHRP = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+				if myHRP then
+					local dist = (myHRP.Position - plr.Character.HumanoidRootPart.Position).Magnitude
+					objects.distLabel.Text = math.floor(dist) .. "m"
+				end
+			end
+		end
+	end
+
+	-- Wallhack
+	UpdateWallhack()
+
+	-- Speed
+	UpdateSpeed()
+
+	-- Aimbot (ignores teammates, uses FOV slider)
+	if Toggles.Aimbot.Value then
+		local target = GetClosestEnemyToMouse()
+		if target and target.Character then
+			local aimPart = target.Character:FindFirstChild("Head") or target.Character:FindFirstChild("HumanoidRootPart")
+			if aimPart then
+				Camera.CFrame = CFrame.new(Camera.CFrame.Position, aimPart.Position)
+			end
+		end
+	end
+
+	-- Silent Aim (fires through walls even if not looking at target, ignores teammates)
+	if Toggles.AutoAim.Value then
+		local target = GetClosestEnemyForSilent()
+		if target and target.Character then
+			local hitPart = target.Character:FindFirstChild("Head") or target.Character:FindFirstChild("HumanoidRootPart")
+			if hitPart then
+				local targetPos = hitPart.Position
+				local origin = Camera.CFrame.Position
+				local remotesFolder = ReplicatedStorage:FindFirstChild("Remotes")
+
+				if remotesFolder then
+					local shootRemote = remotesFolder:FindFirstChild("ShootReplicate")
+					local crosshairRemote = remotesFolder:FindFirstChild("CrosshairSync")
+
+					if shootRemote then
+						shootRemote:FireServer({
+							["hitPos"] = targetPos,
+							["ownerUserId"] = LocalPlayer.UserId,
+							["origin"] = origin,
+							["id"] = math.random(1, 20),
+							["effects"] = {["Frost"] = 0, ["Ricochet"] = 0, ["Barrage"] = 0},
+							["firedAt"] = tick(),
+							["mode"] = "single",
+							["isCharacterHit"] = true,
+							["to"] = targetPos,
+							["hitInstance"] = hitPart,
+							["kind"] = "bullet",
+							["hitNormal"] = Vector3.new(0, 1, 0),
+							["isADS"] = false,
+						})
+					end
+
+					if crosshairRemote then
+						crosshairRemote:FireServer(table.unpack({
+							[1] = "Patch",
+							[2] = {["Reloading"] = 0, ["ReloadingDuration"] = 2},
+						}))
+					end
+				end
+			end
+		end
+	end
+end)
+
+--// ========== UI SETTINGS (Obsidian Standard) ==========
+local MenuGroup = Tabs["UI Settings"]:AddGroupbox({Side = "Left", Name = "Menu", IconName = "wrench"})
+
+MenuGroup:AddToggle("KeybindMenuOpen", {
+	Default = Library.KeybindFrame.Visible,
+	Text = "Open Keybind Menu",
+	Callback = function(value)
+		Library.KeybindFrame.Visible = value
+	end,
+})
+
+MenuGroup:AddToggle("ShowCustomCursor", {
+	Text = "Custom Cursor",
+	Default = Library.ShowCustomCursor,
+	Callback = function(Value)
+		Library.ShowCustomCursor = Value
+	end,
+})
+
+MenuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", {
+	Default = "RightShift",
+	NoUI = true,
+	Text = "Menu keybind",
+})
+
+MenuGroup:AddButton({
+	Text = "Unload",
+	Func = function()
+		Library:Unload()
+	end,
+})
+
+Library.ToggleKeybind = Options.MenuKeybind
+
+--// Theme & Save Managers
+ThemeManager:SetLibrary(Library)
+SaveManager:SetLibrary(Library)
+SaveManager:IgnoreThemeSettings()
+SaveManager:SetIgnoreIndexes({"MenuKeybind"})
+ThemeManager:SetFolder("duelscript")
+SaveManager:SetFolder("duelscript/fps")
+SaveManager:BuildConfigSection(Tabs["UI Settings"])
+ThemeManager:ApplyToTab(Tabs["UI Settings"])
+SaveManager:LoadAutoloadConfig()
